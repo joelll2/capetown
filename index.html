@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Cape Town Education & Population Explorer</title>
+<meta name="description" content="Interactive map of Cape Town education facilities and population density from OpenStreetMap data">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="_data_embed.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0f1e;--panel:rgba(12,20,40,0.82);--border:rgba(100,220,255,0.12);--cyan:#22d3ee;--teal:#14b8a6;--amber:#fbbf24;--purple:#a78bfa;--pink:#f472b6;--text:#e2e8f0;--muted:#94a3b8;--radius:14px}
+body{font-family:'Space Grotesk',sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh;width:100vw}
+#map{position:absolute;inset:0;z-index:1}
+.glass{background:var(--panel);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 8px 32px rgba(0,0,0,.45)}
+#sidebar{position:fixed;top:16px;left:16px;width:300px;z-index:1000;display:flex;flex-direction:column;gap:12px;max-height:calc(100vh - 32px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--cyan) transparent}
+#sidebar::-webkit-scrollbar{width:4px}
+#sidebar::-webkit-scrollbar-thumb{background:var(--cyan);border-radius:4px}
+.panel{padding:16px}
+.panel h2{font-size:13px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--cyan);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.panel h2 span{font-size:16px}
+#searchBox{width:100%;padding:10px 14px;background:rgba(255,255,255,.06);border:1px solid var(--border);border-radius:10px;color:#fff;font-family:'Space Grotesk',sans-serif;font-size:13px;outline:none;transition:border .2s}
+#searchBox:focus{border-color:var(--cyan)}
+#searchResults{margin-top:8px;max-height:180px;overflow-y:auto}
+.search-item{padding:8px 10px;border-radius:8px;cursor:pointer;font-size:12px;transition:background .15s;display:flex;align-items:center;gap:8px}
+.search-item:hover{background:rgba(34,211,238,.1)}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.toggle-row:last-child{border:none}
+.toggle-label{font-size:13px;display:flex;align-items:center;gap:8px}
+.switch{position:relative;width:40px;height:22px;cursor:pointer}
+.switch input{display:none}
+.slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:22px;transition:.25s}
+.slider:before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.25s}
+input:checked+.slider{background:var(--cyan)}
+input:checked+.slider:before{transform:translateX(18px)}
+.view-btns{display:flex;gap:6px;margin-top:10px}
+.view-btn{flex:1;padding:7px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--muted);font-family:'Space Grotesk',sans-serif;font-size:11px;cursor:pointer;transition:all .2s;text-align:center}
+.view-btn.active{background:rgba(34,211,238,.15);color:var(--cyan);border-color:var(--cyan)}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.stat-card{padding:10px;background:rgba(255,255,255,.04);border-radius:10px;text-align:center}
+.stat-val{font-size:22px;font-weight:700;font-family:'DM Mono',monospace}
+.stat-lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+#chartWrap{height:160px;margin-top:8px}
+#legend{position:fixed;bottom:16px;right:16px;z-index:1000;width:220px;padding:14px}
+#legend h3{font-size:12px;font-weight:600;text-transform:uppercase;color:var(--cyan);margin-bottom:10px;letter-spacing:.5px}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:6px;color:var(--muted)}
+.legend-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.legend-rect{width:24px;height:12px;border-radius:3px;flex-shrink:0}
+#homeBtn{position:fixed;top:16px;right:16px;z-index:1000;width:42px;height:42px;border-radius:12px;border:none;cursor:pointer;font-size:18px;display:flex;align-items:center;justify-content:center;transition:transform .2s}
+#homeBtn:hover{transform:scale(1.1)}
+.leaflet-popup-content-wrapper{background:var(--panel)!important;backdrop-filter:blur(16px);border:1px solid var(--border)!important;border-radius:12px!important;color:var(--text)!important;box-shadow:0 8px 32px rgba(0,0,0,.5)!important}
+.leaflet-popup-tip{background:var(--panel)!important}
+.leaflet-popup-close-button{color:var(--muted)!important;font-size:18px!important}
+.popup-card h3{font-size:14px;font-weight:600;margin-bottom:4px}
+.popup-card .popup-type{font-size:11px;color:var(--cyan);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
+.popup-card .popup-info{font-size:12px;color:var(--muted);line-height:1.7}
+.popup-card .popup-info b{color:var(--text)}
+.popup-card .dir-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:6px 12px;background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.25);border-radius:8px;color:var(--cyan);text-decoration:none;font-size:11px;transition:background .2s}
+.popup-card .dir-link:hover{background:rgba(34,211,238,.22)}
+.area-popup h3{font-size:14px;font-weight:600;margin-bottom:6px}
+.area-popup .density-bar{height:6px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:6px;overflow:hidden}
+.area-popup .density-fill{height:100%;border-radius:3px;transition:width .4s}
+#loadingOverlay{position:fixed;inset:0;z-index:2000;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s}
+#loadingOverlay.hidden{opacity:0;pointer-events:none}
+.loader{width:48px;height:48px;border:3px solid rgba(34,211,238,.2);border-top-color:var(--cyan);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+.glass{animation:fadeIn .4s ease}
+.leaflet-marker-icon div{transition:transform .2s}
+.leaflet-marker-icon:hover div{transform:scale(1.15)}
+/* Type filter chips */
+.filter-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{display:flex;align-items:center;gap:5px;padding:5px 10px;border-radius:20px;border:1.5px solid;font-family:'Space Grotesk',sans-serif;font-size:11px;cursor:pointer;transition:all .2s;user-select:none;opacity:0.45}
+.chip.active{opacity:1}
+.chip-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+@media(max-width:768px){
+#sidebar{width:calc(100% - 32px);max-height:45vh;top:auto;bottom:16px}
+#legend{width:180px;bottom:auto;top:60px;right:8px;padding:10px}
+#homeBtn{top:12px;right:60px}
+}
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay">
+ <div class="loader"></div>
+ <div style="font-size:14px;color:var(--cyan);letter-spacing:1px">Loading Cape Town Data...</div>
+</div>
+
+<div id="map"></div>
+<button id="homeBtn" class="glass" title="Zoom to Cape Town" onclick="resetView()">🏠</button>
+
+<div id="sidebar">
+ <div class="panel glass">
+  <h2><span>🔍</span> Search</h2>
+  <input id="searchBox" type="text" placeholder="Search schools, universities, libraries..." oninput="doSearch(this.value)">
+  <div id="searchResults"></div>
+ </div>
+ <div class="panel glass">
+  <h2><span>🗂</span> Layers</h2>
+  <div class="toggle-row"><span class="toggle-label">🎓 Education Facilities</span><label class="switch"><input type="checkbox" id="togEdu" checked onchange="toggleEdu()"><span class="slider"></span></label></div>
+  <div class="filter-chips" id="typeFilters">
+   <div class="chip active" id="chip-university" style="color:#22d3ee;border-color:#22d3ee" onclick="filterType('university')">
+    <div class="chip-dot" style="background:#22d3ee"></div>Universities
+   </div>
+   <div class="chip active" id="chip-school" style="color:#14b8a6;border-color:#14b8a6" onclick="filterType('school')">
+    <div class="chip-dot" style="background:#14b8a6"></div>Schools
+   </div>
+   <div class="chip active" id="chip-library" style="color:#fbbf24;border-color:#fbbf24" onclick="filterType('library')">
+    <div class="chip-dot" style="background:#fbbf24"></div>Libraries
+   </div>
+   <div class="chip active" id="chip-college" style="color:#a78bfa;border-color:#a78bfa" onclick="filterType('college')">
+    <div class="chip-dot" style="background:#a78bfa"></div>Colleges
+   </div>
+   <div class="chip active" id="chip-kindergarten" style="color:#f472b6;border-color:#f472b6" onclick="filterType('kindergarten')">
+    <div class="chip-dot" style="background:#f472b6"></div>Kindergartens
+   </div>
+  </div>
+  <div class="toggle-row" style="margin-top:10px"><span class="toggle-label">🌡 Population Density</span><label class="switch"><input type="checkbox" id="togPop" checked onchange="togglePop()"><span class="slider"></span></label></div>
+  <div class="toggle-row"><span class="toggle-label">🗺️ City Boundary</span><label class="switch"><input type="checkbox" id="togBoundary" checked onchange="toggleBoundary()"><span class="slider"></span></label></div>
+  <div class="view-btns">
+   <button class="view-btn active" id="btnChoro" onclick="setView('choropleth')">Choropleth</button>
+   <button class="view-btn" id="btnHeat" onclick="setView('heatmap')">Heatmap</button>
+  </div>
+ </div>
+ <div class="panel glass">
+  <h2><span>📊</span> Statistics</h2>
+  <div class="stat-grid">
+   <div class="stat-card"><div class="stat-val" style="color:var(--cyan)" id="statTotal">-</div><div class="stat-lbl">Facilities</div></div>
+   <div class="stat-card"><div class="stat-val" style="color:var(--amber)" id="statAreas">-</div><div class="stat-lbl">Grid Cells</div></div>
+   <div class="stat-card"><div class="stat-val" style="color:var(--teal)" id="statSchools">-</div><div class="stat-lbl">Schools</div></div>
+   <div class="stat-card"><div class="stat-val" style="color:var(--purple)" id="statUnis">-</div><div class="stat-lbl">Universities</div></div>
+  </div>
+  <div id="chartWrap"><canvas id="eduChart"></canvas></div>
+  <div id="areaInfo" style="margin-top:10px;font-size:12px;color:var(--muted);display:none">
+   <b id="areaName" style="color:var(--text)"></b><br><span id="areaDensity"></span>
+  </div>
+ </div>
+</div>
+
+<div id="legend" class="glass">
+ <h3>Legend</h3>
+ <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>University</div>
+ <div class="legend-item"><div class="legend-dot" style="background:var(--teal)"></div>School</div>
+ <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>Library</div>
+ <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>College</div>
+ <div class="legend-item"><div class="legend-dot" style="background:var(--pink)"></div>Kindergarten</div>
+ <div style="height:8px"></div>
+ <div class="legend-item"><div class="legend-rect" style="background:linear-gradient(90deg,#fef9c3,#fbbf24,#f97316,#dc2626,#7f1d1d)"></div>Population Density</div>
+ <div style="font-size:10px;color:var(--muted);display:flex;justify-content:space-between;margin-top:2px"><span>Low</span><span>High</span></div>
+ <div style="height:6px"></div>
+ <div class="legend-item"><div class="legend-rect" style="background:var(--cyan);opacity:.4"></div>City Boundary</div>
+ <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06);font-size:10px;color:var(--muted)">Source: OpenStreetMap via HOT Export</div>
+</div>
+
+<script>
+// ─── CONFIG ───
+const CAPE_TOWN = [-33.92, 18.55];
+const ZOOM = 10;
+
+const typeColors = {university:'#22d3ee',school:'#14b8a6',library:'#fbbf24',college:'#a78bfa',kindergarten:'#f472b6'};
+const typeIcons = {university:'🎓',school:'📚',library:'📖',college:'🏛',kindergarten:'👶'};
+const typeLabels = {university:'University',school:'School',library:'Library',college:'College',kindergarten:'Kindergarten'};
+
+// ─── BUILDING DENSITY FROM OSM DATA ───
+// GRID_DATA: 421 grid cells (0.02°x0.02°) from CAPETOWN.geojson building centroids
+const maxBuildings = Math.max(...GRID_DATA.features.map(f=>f.properties.building_count));
+document.getElementById('statAreas').textContent = GRID_DATA.features.length;
+
+function densityColor(norm){
+ // norm = 0..1 (building_count / max)
+ return norm>0.9?'#7f1d1d':norm>0.7?'#991b1b':norm>0.5?'#dc2626':norm>0.35?'#f97316':norm>0.2?'#fbbf24':norm>0.1?'#fde68a':'#fef9c3';
+}
+
+// ─── MAP ───
+const map = L.map('map',{zoomControl:false,attributionControl:false}).setView(CAPE_TOWN,ZOOM);
+L.control.zoom({position:'topright'}).addTo(map);
+L.control.attribution({position:'bottomleft',prefix:false}).addTo(map).addAttribution('© <a href="https://carto.com">CARTO</a> © <a href="https://osm.org">OSM</a>');
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{maxZoom:19,subdomains:'abcd'}).addTo(map);
+
+// ─── LAYERS ───
+const eduLayer = L.layerGroup().addTo(map); // master group
+const typeLayers = {
+ university: L.layerGroup(),
+ school: L.layerGroup(),
+ library: L.layerGroup(),
+ college: L.layerGroup(),
+ kindergarten: L.layerGroup()
+};
+const typeActive = {university:true,school:true,library:true,college:true,kindergarten:true};
+const choroLayer = L.layerGroup().addTo(map);
+const boundaryLayer = L.layerGroup().addTo(map);
+let heatLayer = null;
+let currentView = 'choropleth';
+let allEduFeatures = []; // for search
+
+// ─── LOAD BOUNDARY (inline) ───
+L.geoJSON({type:'Feature',geometry:BOUNDARY_DATA,properties:{}},{
+ style:{color:'#22d3ee',weight:2,fillColor:'#22d3ee',fillOpacity:.03,dashArray:'8 4'}
+}).addTo(boundaryLayer);
+
+// ─── LOAD EDUCATION DATA (inline) ───
+function loadData(){
+ const data = EDU_DATA;
+ const counts = {university:0,school:0,library:0,college:0,kindergarten:0};
+
+ data.features.forEach(feat=>{
+  const p = feat.properties;
+  const amenity = p.amenity;
+  const coords = feat.geometry.coordinates;
+  const lat = coords[1], lng = coords[0];
+  const name = p.name || 'Unknown';
+  const c = typeColors[amenity] || '#94a3b8';
+  const emoji = typeIcons[amenity] || '📍';
+
+  counts[amenity] = (counts[amenity]||0) + 1;
+  allEduFeatures.push({name,amenity,lat,lng,addr:p.addr_street,capacity:p.capacity,isced:p.isced_level});
+
+  const icon = L.divIcon({
+   className:'',
+   html:`<div style="width:10px;height:10px;background:${c};border-radius:50%;box-shadow:0 0 6px ${c}88"></div>`,
+   iconSize:[10,10],iconAnchor:[5,5]
+  });
+
+  const capStr = p.capacity ? `<b>Capacity:</b> ${p.capacity}<br>` : '';
+  const addrStr = p.addr_street ? `<b>Address:</b> ${p.addr_street}<br>` : '';
+  const iscedStr = p.isced_level ? `<b>ISCED Level:</b> ${p.isced_level}<br>` : '';
+
+  const marker = L.marker([lat,lng],{icon}).bindPopup(`
+   <div class="popup-card">
+    <h3>${emoji} ${name}</h3>
+    <div class="popup-type">${typeLabels[amenity]||amenity}</div>
+    <div class="popup-info">${addrStr}${capStr}${iscedStr}</div>
+    <a class="dir-link" href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}" target="_blank" rel="noopener">📍 Get Directions</a>
+   </div>
+  `,{maxWidth:260});
+  if(typeLayers[amenity]) typeLayers[amenity].addLayer(marker);
+ });
+
+ // Update stats
+ document.getElementById('statTotal').textContent = data.features.length.toLocaleString();
+ document.getElementById('statSchools').textContent = (counts.school||0).toLocaleString();
+ document.getElementById('statUnis').textContent = counts.university||0;
+
+ // Chart
+ new Chart(document.getElementById('eduChart'),{
+  type:'doughnut',
+  data:{
+   labels:['Schools','Universities','Libraries','Colleges','Kindergartens'],
+   datasets:[{
+    data:[counts.school,counts.university,counts.library,counts.college,counts.kindergarten],
+    backgroundColor:['#14b8a6','#22d3ee','#fbbf24','#a78bfa','#f472b6'],
+    borderColor:'transparent',borderWidth:0
+   }]
+  },
+  options:{
+   responsive:true,maintainAspectRatio:false,
+   plugins:{legend:{position:'bottom',labels:{color:'#94a3b8',font:{family:'Space Grotesk',size:10},padding:8,usePointStyle:true,pointStyleWidth:8}}},
+   cutout:'65%'
+  }
+ });
+
+ // Add all type layers into master eduLayer
+ Object.values(typeLayers).forEach(tl=>eduLayer.addLayer(tl));
+ document.getElementById('loadingOverlay').classList.add('hidden');
+}
+loadData();
+
+// ─── CHOROPLETH from real OSM building density ───
+GRID_DATA.features.forEach(feat=>{
+ const norm = feat.properties.density_norm;
+ const cnt = feat.properties.building_count;
+ const coords = feat.geometry.coordinates[0].map(c=>[c[1],c[0]]);
+ L.polygon(coords,{
+  fillColor:densityColor(norm),fillOpacity:.45,color:'rgba(255,255,255,0.08)',weight:0.5
+ }).bindPopup(`
+  <div class="area-popup">
+   <div style="font-size:12px;color:var(--muted);line-height:1.7">
+    <b style="color:var(--text)">Buildings in cell:</b> ${cnt.toLocaleString()}<br>
+    <b style="color:var(--text)">Relative density:</b> ${(norm*100).toFixed(1)}%
+   </div>
+   <div class="density-bar"><div class="density-fill" style="width:${(norm*100).toFixed(0)}%;background:${densityColor(norm)}"></div></div>
+  </div>
+ `,{maxWidth:200})
+ .on('click',()=>{
+  document.getElementById('areaInfo').style.display='block';
+  document.getElementById('areaName').textContent='Grid Cell';
+  document.getElementById('areaDensity').innerHTML=`Buildings: <b style="color:var(--text)">${cnt.toLocaleString()}</b> · Density: <b style="color:var(--text)">${(norm*100).toFixed(1)}%</b>`;
+ })
+ .on('mouseover',function(){this.setStyle({fillOpacity:.7,weight:1,color:'rgba(255,255,255,0.3)'})})
+ .on('mouseout',function(){this.setStyle({fillOpacity:.45,weight:0.5,color:'rgba(255,255,255,0.08)'})})
+ .addTo(choroLayer);
+});
+
+// ─── HEATMAP from real building centroids ───
+const heatPoints = GRID_DATA.features.map(feat=>{
+ const ring = feat.geometry.coordinates[0];
+ const lat = ring.reduce((a,c)=>a+c[1],0)/ring.length;
+ const lng = ring.reduce((a,c)=>a+c[0],0)/ring.length;
+ return [lat, lng, feat.properties.density_norm];
+});
+heatLayer = L.heatLayer(heatPoints,{radius:28,blur:22,maxZoom:14,gradient:{0.1:'#fef9c3',0.3:'#fde68a',0.5:'#fbbf24',0.7:'#f97316',0.9:'#dc2626',1:'#7f1d1d'}});
+
+// ─── CONTROLS ───
+function toggleEdu(){
+ const on = document.getElementById('togEdu').checked;
+ document.getElementById('typeFilters').style.opacity = on ? '1' : '0.35';
+ document.getElementById('typeFilters').style.pointerEvents = on ? '' : 'none';
+ on ? map.addLayer(eduLayer) : map.removeLayer(eduLayer);
+}
+function filterType(type){
+ typeActive[type] = !typeActive[type];
+ const chip = document.getElementById('chip-'+type);
+ chip.classList.toggle('active', typeActive[type]);
+ if(typeActive[type]){
+  eduLayer.addLayer(typeLayers[type]);
+ } else {
+  eduLayer.removeLayer(typeLayers[type]);
+ }
+}
+function togglePop(){
+ const on=document.getElementById('togPop').checked;
+ if(on){currentView==='choropleth'?map.addLayer(choroLayer):map.addLayer(heatLayer)}
+ else{map.removeLayer(choroLayer);map.removeLayer(heatLayer)}
+}
+function toggleBoundary(){document.getElementById('togBoundary').checked?map.addLayer(boundaryLayer):map.removeLayer(boundaryLayer)}
+function setView(v){
+ currentView=v;
+ document.getElementById('btnChoro').classList.toggle('active',v==='choropleth');
+ document.getElementById('btnHeat').classList.toggle('active',v==='heatmap');
+ if(!document.getElementById('togPop').checked)return;
+ if(v==='choropleth'){map.removeLayer(heatLayer);map.addLayer(choroLayer)}
+ else{map.removeLayer(choroLayer);map.addLayer(heatLayer)}
+}
+function resetView(){map.flyTo(CAPE_TOWN,ZOOM,{duration:1.2})}
+
+// ─── SEARCH ───
+function doSearch(q){
+ const box=document.getElementById('searchResults');
+ if(!q.trim()){box.innerHTML='';return}
+ q=q.toLowerCase();
+ const results=[];
+ allEduFeatures.forEach(e=>{
+  if(e.name.toLowerCase().includes(q)||(e.addr&&e.addr.toLowerCase().includes(q)))
+   results.push({label:`${typeIcons[e.amenity]||'📍'} ${e.name}`,lat:e.lat,lng:e.lng,zoom:16});
+ });
+ suburbs.forEach(s=>{if(s.name.toLowerCase().includes(q)){
+  const cLat=s.coords.reduce((a,c)=>a+c[1],0)/s.coords.length;
+  const cLng=s.coords.reduce((a,c)=>a+c[0],0)/s.coords.length;
+  results.push({label:`📍 ${s.name} (area)`,lat:cLat,lng:cLng,zoom:14});
+ }});
+ box.innerHTML=results.slice(0,10).map(r=>
+  `<div class="search-item" onclick="flyTo(${r.lat},${r.lng},${r.zoom})">${r.label}</div>`
+ ).join('')||'<div style="padding:8px;font-size:12px;color:var(--muted)">No results found</div>';
+}
+function flyTo(lat,lng,z){
+ map.flyTo([lat,lng],z,{duration:1});
+ document.getElementById('searchResults').innerHTML='';
+ document.getElementById('searchBox').value='';
+}
+</script>
+</body>
+</html>
